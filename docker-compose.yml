@@ -1,0 +1,91 @@
+services:
+  vllm:
+    build:
+      context: .
+      dockerfile: config/vllm/Dockerfile
+      args:
+        VLLM_BASE_IMAGE: ${VLLM_IMAGE}
+        TRANSFORMERS_GIT_REF: ${TRANSFORMERS_GIT_REF}
+    image: nvfp4studio-vllm:latest
+    container_name: nvfp4studio-vllm
+    restart: unless-stopped
+    env_file:
+      - .env
+    ipc: host
+    shm_size: "16gb"
+    gpus: all
+    ports:
+      - "${HOST_BIND_IP:-127.0.0.1}:${VLLM_PORT}:${VLLM_PORT}"
+    volumes:
+      - type: bind
+        source: ${MODEL_PATH}
+        target: ${MODEL_PATH}
+        read_only: true
+      - ./data/logs:/workspace/logs
+      - ./config/vllm:/workspace/config/vllm:ro
+    entrypoint:
+      - /bin/bash
+      - /workspace/config/vllm/start-vllm.sh
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - python3 -c "import urllib.request; urllib.request.urlopen('http://127.0.0.1:${VLLM_PORT}/health', timeout=5)"
+      interval: 20s
+      timeout: 10s
+      retries: 20
+      start_period: 60s
+
+  gateway:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: nvfp4studio-gateway
+    restart: unless-stopped
+    env_file:
+      - .env
+    depends_on:
+      vllm:
+        condition: service_healthy
+    ports:
+      - "${HOST_BIND_IP:-127.0.0.1}:${GATEWAY_PORT}:${GATEWAY_PORT}"
+    volumes:
+      - ./data:/app/data
+      - ./config/app:/app/config/app:ro
+      - ./data/logs:/app/data/logs
+    command:
+      - uvicorn
+      - app.main:app
+      - --host
+      - 0.0.0.0
+      - --port
+      - "${GATEWAY_PORT}"
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - python -c "import urllib.request; urllib.request.urlopen('http://127.0.0.1:${GATEWAY_PORT}/health', timeout=5)"
+      interval: 15s
+      timeout: 5s
+      retries: 20
+      start_period: 15s
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    container_name: nvfp4studio-web
+    restart: unless-stopped
+    env_file:
+      - .env
+    depends_on:
+      gateway:
+        condition: service_healthy
+    ports:
+      - "${HOST_BIND_IP:-127.0.0.1}:${WEB_PORT}:3000"
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - wget -q -O /dev/null http://127.0.0.1:3000 || exit 1
+      interval: 15s
+      timeout: 5s
+      retries: 20
+      start_period: 20s

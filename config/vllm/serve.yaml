@@ -1,0 +1,10 @@
+model_path: /media/shinkaman/INTEL_TUF/Sefetensors/nvfp4/Huihui-Qwen3.5-35B-A3B-abliterated-NVFP4
+served_model_name: Huihui-Qwen3.5-35B-A3B-abliterated-NVFP4
+tensor_parallel_size: 1
+max_model_len: 8192
+gpu_memory_utilization: 0.85
+trust_remote_code: true
+notes:
+  - Compose service reads .env as the source of truth.
+  - This file mirrors the default serve values for operators.
+

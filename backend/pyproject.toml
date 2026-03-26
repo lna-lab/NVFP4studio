@@ -1,0 +1,10 @@
+[project]
+name = "nvfp4studio-gateway"
+version = "0.1.0"
+description = "Gateway and benchmark recorder for local vLLM NVFP4 serving."
+requires-python = ">=3.12"
+
+[tool.pytest.ini_options]
+testpaths = ["app/tests"]
+pythonpath = ["."]
+
