@@ -10,10 +10,8 @@
 
 ## 絶対条件
 
-- モデル実体:
-  `/media/shinkaman/INTEL_TUF/Sefetensors/nvfp4/Huihui-Qwen3.5-35B-A3B-abliterated-NVFP4`
-- 実装先:
-  `/media/shinkaman/INTEL_TUF/Sefetensors/NVFP4studio`
+- モデル実体はホスト上の既存 NVFP4 ディレクトリをそのまま参照する
+- 実装先はこのリポジトリ直下とする
 - モデルファイルは移動・改変しない
 
 ## サービス要件
@@ -34,4 +32,3 @@
 
 - SQLite に会話単位で保存
 - CSV / JSON export
-

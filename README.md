@@ -1,6 +1,6 @@
 # NVFP4studio
 
-Local vLLM + FastAPI + Next.js studio for NVFP4 models, with OpenAI-compatible chat APIs and benchmark tracking.
+Local vLLM + FastAPI + Next.js studio for NVFP4 models, with OpenAI-compatible chat APIs, runtime profile control, and benchmark tracking.
 
 Language: [English](#english) | [中文](#中文) | [日本語](#日本語)
 
@@ -10,14 +10,29 @@ Language: [English](#english) | [中文](#中文) | [日本語](#日本語)
 - Verified runtime target: Ubuntu 24.04 + NVIDIA GPU + Docker + NVIDIA Container Toolkit.
 - UI, Gateway, and vLLM are running together via Docker Compose.
 - English, Chinese, and Japanese documentation are included.
-- Windows and macOS are planned, but the current verified deployment target is Linux with NVIDIA GPU support.
+- Runtime profiles, GPU telemetry, KV cache budget control, and benchmark export are included.
+- The current optimization focus especially targets `RTX PRO 6000 Blackwell` and `RTX 5090` users who want long-context NVFP4 serving with tighter VRAM budgets.
 
 ## Verified Model
 
-- Model path:
-  `/media/shinkaman/INTEL_TUF/Sefetensors/nvfp4/Huihui-Qwen3.5-35B-A3B-abliterated-NVFP4`
-- Default served model name:
-  `Huihui-Qwen3.5-35B-A3B-abliterated-NVFP4`
+- Primary Qwen3.5 targets:
+  `Qwen3.5-27B`, `Qwen3.5-35B-A3B`, `Qwen3.5-4B`
+- Example model path:
+  `/absolute/path/to/your/nvfp4-model`
+- Example served model name:
+  `your-nvfp4-model`
+- Public NVFP4 variants are available on Hugging Face and can be downloaded without purchase:
+  [Qwen3.5-27B-NVFP4](https://huggingface.co/apolo13x/Qwen3.5-27B-NVFP4),
+  [Qwen3.5-35B-A3B-NVFP4](https://huggingface.co/apolo13x/Qwen3.5-35B-A3B-NVFP4),
+  [Qwen3.5-4B quantized models](https://huggingface.co/models?other=base_model%3Aquantized%3AQwen%2FQwen3.5-4B&p=1&sort=trending)
+
+## Verified Runtime Findings
+
+- `speed + -c 256K` used about `90.3GB` VRAM.
+- `balanced + -c 256K` used about `65.3GB` VRAM.
+- `memory + -c 256K + KV budget 4G` reached about `34.2GB` peak VRAM with quality canary `3/3`.
+- `memory + -c 256K + KV budget 3G` reduced VRAM further, but quality canary fell to `2/3`, so it is not the current recommendation.
+- `2 instances x 2 seqs` worked as a multi-tenant layout, but did not outperform `1 instance x 2 seqs` in aggregate throughput.
 
 ---
 
@@ -25,7 +40,22 @@ Language: [English](#english) | [中文](#中文) | [日本語](#日本語)
 
 ## Overview
 
-`NVFP4studio` is a local studio for serving a locally stored NVFP4 model through vLLM, exposing an OpenAI-compatible API through FastAPI, and visualizing TTFT, token/s, latency, and usage in a browser UI.
+`NVFP4studio` is a local studio for serving a locally stored NVFP4 model through vLLM, exposing an OpenAI-compatible API through FastAPI, and visualizing TTFT, token/s, latency, GPU status, and benchmark history in a browser UI.
+
+## Intended Users
+
+- Especially useful for `RTX PRO 6000 Blackwell` and `RTX 5090` users
+- Written for operators who want to keep long context while pushing VRAM use down without giving up acceptable quality
+
+## Primary Qwen3.5 Targets
+
+- `Qwen3.5-27B`
+- `Qwen3.5-35B-A3B`
+- `Qwen3.5-4B`
+- Public NVFP4 variants are available on Hugging Face and can be downloaded without purchase:
+  [Qwen3.5-27B-NVFP4](https://huggingface.co/apolo13x/Qwen3.5-27B-NVFP4),
+  [Qwen3.5-35B-A3B-NVFP4](https://huggingface.co/apolo13x/Qwen3.5-35B-A3B-NVFP4),
+  [Qwen3.5-4B quantized models](https://huggingface.co/models?other=base_model%3Aquantized%3AQwen%2FQwen3.5-4B&p=1&sort=trending)
 
 ## What Works
 
@@ -33,13 +63,25 @@ Language: [English](#english) | [中文](#中文) | [日本語](#日本語)
 - Gateway exposes:
   `GET /health`
   `GET /api/system/status`
+  `GET /api/system/config`
+  `POST /api/system/runtime-config`
   `GET /api/benchmarks/recent`
   `GET /api/benchmarks/export?format=json|csv`
   `GET /v1/models`
   `POST /v1/chat/completions`
-- Browser UI supports chat, streaming, model status, parameter controls, and benchmark history
+- Browser UI supports chat, streaming, model status, runtime profile controls, and benchmark history
 - SQLite stores per-request benchmark records
 - Docker Compose starts the full stack
+
+## Verified Runtime Findings
+
+- The main VRAM reduction lever was not model weights, but `KV cache` reservation.
+- Explicit `--kv-cache-memory-bytes` was more effective than only lowering `gpu_memory_utilization`.
+- The current best verified single-user point is:
+  `memory` profile + `MAX_MODEL_LEN=262144` + `KV_CACHE_MEMORY_BYTES=4G`
+- That setting kept quality canary at `3/3` while reducing peak VRAM to about `34.2GB`.
+- `3G` reduced VRAM a bit more, but quality dropped, so it is currently rejected.
+- `2x2` is useful for tenant isolation and comparison workloads, not as a guaranteed throughput upgrade.
 
 ## Verified Local URLs
 
@@ -50,7 +92,9 @@ Language: [English](#english) | [中文](#中文) | [日本語](#日本語)
 ## Quick Start
 
 ```bash
-cd /media/shinkaman/INTEL_TUF/Sefetensors/NVFP4studio
+git clone https://github.com/lna-lab/NVFP4studio.git
+cd NVFP4studio
+cp .env.example .env
 ./scripts/bootstrap.sh
 ./scripts/start.sh
 ```
@@ -85,8 +129,8 @@ Stop or restart:
 ## Architecture
 
 - `vllm`: model serving
-- `gateway`: FastAPI OpenAI-compatible proxy and benchmark recorder
-- `frontend`: Next.js chat UI
+- `gateway`: FastAPI OpenAI-compatible proxy, runtime advisory, and benchmark recorder
+- `frontend`: Next.js chat UI and runtime control panel
 - `data/sqlite/nvfp4studio.db`: benchmark database
 - `data/logs/`: service logs
 
@@ -98,18 +142,25 @@ Main runtime settings live in `.env`. Important values:
 - `SERVED_MODEL_NAME`
 - `VLLM_IMAGE`
 - `TRANSFORMERS_GIT_REF`
-- `TENSOR_PARALLEL_SIZE`
 - `MAX_MODEL_LEN`
+- `VLLM_RUNTIME_PROFILE`
 - `GPU_MEMORY_UTILIZATION`
+- `MAX_NUM_SEQS`
+- `MAX_NUM_BATCHED_TOKENS`
+- `KV_CACHE_DTYPE`
+- `KV_CACHE_MEMORY_BYTES`
+- `CPU_OFFLOAD_GB`
+- `SWAP_SPACE`
 - `BIND_LOCALHOST_ONLY`
 - `HOST_BIND_IP`
 
-Default serving values follow the model-card style setup:
+Default serving values start from a conservative compatibility setup:
 
 - `TENSOR_PARALLEL_SIZE=1`
 - `MAX_MODEL_LEN=8192`
 - `TRUST_REMOTE_CODE=true`
 - `GPU_MEMORY_UTILIZATION=0.85`
+- `VLLM_RUNTIME_PROFILE=speed`
 
 ## Data and Exports
 
@@ -126,11 +177,15 @@ The current verified model may emit reasoning-style text such as `Thinking Proce
 
 ## Documentation
 
-- [docs/requirements.md](/media/shinkaman/INTEL_TUF/Sefetensors/NVFP4studio/docs/requirements.md)
-- [docs/architecture.md](/media/shinkaman/INTEL_TUF/Sefetensors/NVFP4studio/docs/architecture.md)
-- [docs/runbook.md](/media/shinkaman/INTEL_TUF/Sefetensors/NVFP4studio/docs/runbook.md)
-- [docs/benchmark-methodology.md](/media/shinkaman/INTEL_TUF/Sefetensors/NVFP4studio/docs/benchmark-methodology.md)
-- [docs/versions.md](/media/shinkaman/INTEL_TUF/Sefetensors/NVFP4studio/docs/versions.md)
+- [docs/requirements.md](docs/requirements.md)
+- [docs/architecture.md](docs/architecture.md)
+- [docs/runbook.md](docs/runbook.md)
+- [scripts/README.md](scripts/README.md)
+- [docs/benchmark-methodology.md](docs/benchmark-methodology.md)
+- [docs/vllm-optimization-notes.md](docs/vllm-optimization-notes.md)
+- [docs/nvfp4-conversion-notes.md](docs/nvfp4-conversion-notes.md)
+- [docs/model-research-notes.md](docs/model-research-notes.md)
+- [docs/versions.md](docs/versions.md)
 
 ---
 
@@ -138,7 +193,22 @@ The current verified model may emit reasoning-style text such as `Thinking Proce
 
 ## 概述
 
-`NVFP4studio` 是一个本地化的 NVFP4 推理工作台。它使用 vLLM 从本地模型目录启动服务，通过 FastAPI 提供 OpenAI 兼容 API，并在浏览器 UI 中展示 TTFT、token/s、latency 和 usage。
+`NVFP4studio` 是一个本地化的 NVFP4 推理工作台。它使用 vLLM 从本地模型目录启动服务，通过 FastAPI 提供 OpenAI 兼容 API，并在浏览器 UI 中展示 TTFT、token/s、latency、GPU 状态和 benchmark 历史。
+
+## 目标用户
+
+- 特别面向 `RTX PRO 6000 Blackwell` 和 `RTX 5090` 用户
+- 适合希望在保持长上下文的同时尽量压低 VRAM 占用、又不明显牺牲可用质量的使用者
+
+## 主要 Qwen3.5 模型
+
+- `Qwen3.5-27B`
+- `Qwen3.5-35B-A3B`
+- `Qwen3.5-4B`
+- Hugging Face 上已有公开的 NVFP4 版本，用户可无偿获取:
+  [Qwen3.5-27B-NVFP4](https://huggingface.co/apolo13x/Qwen3.5-27B-NVFP4),
+  [Qwen3.5-35B-A3B-NVFP4](https://huggingface.co/apolo13x/Qwen3.5-35B-A3B-NVFP4),
+  [Qwen3.5-4B quantized models](https://huggingface.co/models?other=base_model%3Aquantized%3AQwen%2FQwen3.5-4B&p=1&sort=trending)
 
 ## 当前已验证
 
@@ -150,10 +220,23 @@ The current verified model may emit reasoning-style text such as `Thinking Proce
   `frontend`
 - 已验证接口:
   `GET /health`
+  `GET /api/system/status`
+  `GET /api/system/config`
+  `POST /api/system/runtime-config`
   `GET /v1/models`
   `POST /v1/chat/completions`
   `GET /api/benchmarks/recent`
   `GET /api/benchmarks/export?format=json|csv`
+
+## 已验证的 VRAM 结论
+
+- VRAM 差异的主因不是模型权重，而是 `KV cache` 预留量。
+- 仅降低 `gpu_memory_utilization` 有帮助，但显式设置 `KV cache budget` 更有效。
+- 当前最好的单用户已验证点是:
+  `memory` profile + `MAX_MODEL_LEN=262144` + `KV_CACHE_MEMORY_BYTES=4G`
+- 这一设置把峰值 VRAM 降到约 `34.2GB`，同时 quality canary 维持在 `3/3`。
+- `3G` 虽然还能再省一点 VRAM，但 quality canary 下降到 `2/3`，当前不推荐。
+- `2x2` 更适合多租户隔离与对比实验，不应直接理解为吞吐提升方案。
 
 ## 默认地址
 
@@ -164,7 +247,9 @@ The current verified model may emit reasoning-style text such as `Thinking Proce
 ## 快速开始
 
 ```bash
-cd /media/shinkaman/INTEL_TUF/Sefetensors/NVFP4studio
+git clone https://github.com/lna-lab/NVFP4studio.git
+cd NVFP4studio
+cp .env.example .env
 ./scripts/bootstrap.sh
 ./scripts/start.sh
 ```
@@ -181,11 +266,20 @@ cd /media/shinkaman/INTEL_TUF/Sefetensors/NVFP4studio
 ./scripts/benchmark_smoke.sh
 ```
 
+停止或重启:
+
+```bash
+./scripts/stop.sh
+./scripts/restart.sh
+```
+
 ## 主要功能
 
 - 使用本地绝对路径加载 NVFP4 模型
 - 提供 OpenAI 兼容聊天接口
+- 支持运行时 profile 切换与上下文重配置
 - 记录 TTFT、completion token/s、total token/s、total latency
+- 记录 GPU 状态、KV cache 建议值和 benchmark 历史
 - 将 benchmark 结果保存到 SQLite
 - 支持 JSON 和 CSV 导出
 
@@ -198,7 +292,14 @@ cd /media/shinkaman/INTEL_TUF/Sefetensors/NVFP4studio
 - `VLLM_IMAGE`
 - `TRANSFORMERS_GIT_REF`
 - `MAX_MODEL_LEN`
+- `VLLM_RUNTIME_PROFILE`
 - `GPU_MEMORY_UTILIZATION`
+- `MAX_NUM_SEQS`
+- `MAX_NUM_BATCHED_TOKENS`
+- `KV_CACHE_DTYPE`
+- `KV_CACHE_MEMORY_BYTES`
+- `CPU_OFFLOAD_GB`
+- `SWAP_SPACE`
 - `BIND_LOCALHOST_ONLY`
 
 默认推理参数:
@@ -207,6 +308,7 @@ cd /media/shinkaman/INTEL_TUF/Sefetensors/NVFP4studio
 - `MAX_MODEL_LEN=8192`
 - `TRUST_REMOTE_CODE=true`
 - `GPU_MEMORY_UTILIZATION=0.85`
+- `VLLM_RUNTIME_PROFILE=speed`
 
 ## 数据目录
 
@@ -220,11 +322,15 @@ cd /media/shinkaman/INTEL_TUF/Sefetensors/NVFP4studio
 
 ## 文档
 
-- [docs/requirements.md](/media/shinkaman/INTEL_TUF/Sefetensors/NVFP4studio/docs/requirements.md)
-- [docs/architecture.md](/media/shinkaman/INTEL_TUF/Sefetensors/NVFP4studio/docs/architecture.md)
-- [docs/runbook.md](/media/shinkaman/INTEL_TUF/Sefetensors/NVFP4studio/docs/runbook.md)
-- [docs/benchmark-methodology.md](/media/shinkaman/INTEL_TUF/Sefetensors/NVFP4studio/docs/benchmark-methodology.md)
-- [docs/versions.md](/media/shinkaman/INTEL_TUF/Sefetensors/NVFP4studio/docs/versions.md)
+- [docs/requirements.md](docs/requirements.md)
+- [docs/architecture.md](docs/architecture.md)
+- [docs/runbook.md](docs/runbook.md)
+- [scripts/README.md](scripts/README.md)
+- [docs/benchmark-methodology.md](docs/benchmark-methodology.md)
+- [docs/vllm-optimization-notes.md](docs/vllm-optimization-notes.md)
+- [docs/nvfp4-conversion-notes.md](docs/nvfp4-conversion-notes.md)
+- [docs/model-research-notes.md](docs/model-research-notes.md)
+- [docs/versions.md](docs/versions.md)
 
 ---
 
@@ -232,7 +338,22 @@ cd /media/shinkaman/INTEL_TUF/Sefetensors/NVFP4studio
 
 ## 概要
 
-`NVFP4studio` は、ローカルに保存した NVFP4 モデルを vLLM で起動し、FastAPI Gateway 経由で OpenAI 互換 API を公開しつつ、ブラウザ UI で TTFT、token/s、latency、usage を見える化するローカル向けスタジオです。
+`NVFP4studio` は、ローカルに保存した NVFP4 モデルを vLLM で起動し、FastAPI Gateway 経由で OpenAI 互換 API を公開しつつ、ブラウザ UI で TTFT、token/s、latency、GPU 状態、ベンチ履歴を見える化するローカル向けスタジオです。
+
+## 想定ユーザー
+
+- とくに `RTX PRO 6000 Blackwell` と `RTX 5090` のユーザーを強く意識しています
+- 長コンテキストを維持しながら、品質を大きく崩さずに VRAM 使用量を詰めたい運用者向けです
+
+## 主役となる Qwen3.5 モデル
+
+- `Qwen3.5-27B`
+- `Qwen3.5-35B-A3B`
+- `Qwen3.5-4B`
+- それぞれの NVFP4 系バリアントは Hugging Face 上で公開入手できます:
+  [Qwen3.5-27B-NVFP4](https://huggingface.co/apolo13x/Qwen3.5-27B-NVFP4),
+  [Qwen3.5-35B-A3B-NVFP4](https://huggingface.co/apolo13x/Qwen3.5-35B-A3B-NVFP4),
+  [Qwen3.5-4B quantized models](https://huggingface.co/models?other=base_model%3Aquantized%3AQwen%2FQwen3.5-4B&p=1&sort=trending)
 
 ## 現在確認できていること
 
@@ -240,11 +361,24 @@ cd /media/shinkaman/INTEL_TUF/Sefetensors/NVFP4studio
 - `vllm`、`gateway`、`frontend` の 3 サービスが Compose で動作
 - 次の API を確認済み:
   `GET /health`
+  `GET /api/system/status`
+  `GET /api/system/config`
+  `POST /api/system/runtime-config`
   `GET /v1/models`
   `POST /v1/chat/completions`
   `GET /api/benchmarks/recent`
   `GET /api/benchmarks/export?format=json|csv`
-- UI から会話、ベンチ履歴表示、export が可能
+- UI から会話、ベンチ履歴表示、runtime profile 切り替え、export が可能
+
+## 確認できた VRAM 節約の知見
+
+- VRAM 差の主因はモデル重みそのものより `KV cache` の予約量でした。
+- `gpu_memory_utilization` を下げるだけでも効きますが、`KV_CACHE_MEMORY_BYTES` を明示した方が効果は大きいです。
+- 現時点の単ユーザー暫定ベストは:
+  `memory` profile + `MAX_MODEL_LEN=262144` + `KV_CACHE_MEMORY_BYTES=4G`
+- この設定では peak VRAM が約 `34.2GB` まで下がり、quality canary も `3/3` を維持できました。
+- `3G` まで下げると VRAM はさらに減りましたが、quality canary が `2/3` に落ちたため不採用です。
+- `2インスタンス x 2シーケンス` は成立しましたが、総 throughput 強化というより multi-tenant 隔離向きでした。
 
 ## 起動先
 
@@ -255,7 +389,9 @@ cd /media/shinkaman/INTEL_TUF/Sefetensors/NVFP4studio
 ## クイックスタート
 
 ```bash
-cd /media/shinkaman/INTEL_TUF/Sefetensors/NVFP4studio
+git clone https://github.com/lna-lab/NVFP4studio.git
+cd NVFP4studio
+cp .env.example .env
 ./scripts/bootstrap.sh
 ./scripts/start.sh
 ```
@@ -283,10 +419,11 @@ cd /media/shinkaman/INTEL_TUF/Sefetensors/NVFP4studio
 
 - ローカルモデルパスをそのまま bind mount して vLLM 起動
 - OpenAI 互換 API を Gateway から公開
+- runtime profile と context を UI/API から切り替え
 - streaming 中に TTFT と token/s を計測
+- GPU 状態、KV capacity、runtime advisory を取得
 - リクエスト単位のベンチ結果を SQLite に保存
 - ベンチ履歴の JSON / CSV export
-- ブラウザ UI で会話、状態確認、パラメータ調整
 
 ## 主な設定
 
@@ -297,7 +434,14 @@ cd /media/shinkaman/INTEL_TUF/Sefetensors/NVFP4studio
 - `VLLM_IMAGE`
 - `TRANSFORMERS_GIT_REF`
 - `MAX_MODEL_LEN`
+- `VLLM_RUNTIME_PROFILE`
 - `GPU_MEMORY_UTILIZATION`
+- `MAX_NUM_SEQS`
+- `MAX_NUM_BATCHED_TOKENS`
+- `KV_CACHE_DTYPE`
+- `KV_CACHE_MEMORY_BYTES`
+- `CPU_OFFLOAD_GB`
+- `SWAP_SPACE`
 - `BIND_LOCALHOST_ONLY`
 - `HOST_BIND_IP`
 
@@ -307,6 +451,7 @@ cd /media/shinkaman/INTEL_TUF/Sefetensors/NVFP4studio
 - `MAX_MODEL_LEN=8192`
 - `TRUST_REMOTE_CODE=true`
 - `GPU_MEMORY_UTILIZATION=0.85`
+- `VLLM_RUNTIME_PROFILE=speed`
 
 ## 保存先
 
@@ -316,12 +461,16 @@ cd /media/shinkaman/INTEL_TUF/Sefetensors/NVFP4studio
 
 ## 注意点
 
-今回の検証モデルは、プロンプト条件によって `Thinking Process` のような推論文をそのまま出すことがあります。アプリ基盤の動作には問題ありませんが、公開版では prompt 設計や後処理を追加調整する余地があります。
+今回の検証モデルは、プロンプト条件によって `Thinking Process` のような推論文をそのまま出すことがあります。アプリ基盤の動作には問題ありませんが、prompt 設計や後処理にはまだ調整余地があります。
 
 ## 関連ドキュメント
 
-- [docs/requirements.md](/media/shinkaman/INTEL_TUF/Sefetensors/NVFP4studio/docs/requirements.md)
-- [docs/architecture.md](/media/shinkaman/INTEL_TUF/Sefetensors/NVFP4studio/docs/architecture.md)
-- [docs/runbook.md](/media/shinkaman/INTEL_TUF/Sefetensors/NVFP4studio/docs/runbook.md)
-- [docs/benchmark-methodology.md](/media/shinkaman/INTEL_TUF/Sefetensors/NVFP4studio/docs/benchmark-methodology.md)
-- [docs/versions.md](/media/shinkaman/INTEL_TUF/Sefetensors/NVFP4studio/docs/versions.md)
+- [docs/requirements.md](docs/requirements.md)
+- [docs/architecture.md](docs/architecture.md)
+- [docs/runbook.md](docs/runbook.md)
+- [scripts/README.md](scripts/README.md)
+- [docs/benchmark-methodology.md](docs/benchmark-methodology.md)
+- [docs/vllm-optimization-notes.md](docs/vllm-optimization-notes.md)
+- [docs/nvfp4-conversion-notes.md](docs/nvfp4-conversion-notes.md)
+- [docs/model-research-notes.md](docs/model-research-notes.md)
+- [docs/versions.md](docs/versions.md)

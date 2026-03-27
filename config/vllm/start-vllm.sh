@@ -50,8 +50,36 @@ args=(
   --gpu-memory-utilization "${GPU_MEMORY_UTILIZATION}"
 )
 
+if [ -n "${MAX_NUM_SEQS:-}" ]; then
+  args+=(--max-num-seqs "${MAX_NUM_SEQS}")
+fi
+
+if [ -n "${MAX_NUM_BATCHED_TOKENS:-}" ]; then
+  args+=(--max-num-batched-tokens "${MAX_NUM_BATCHED_TOKENS}")
+fi
+
+if [ -n "${KV_CACHE_DTYPE:-}" ]; then
+  args+=(--kv-cache-dtype "${KV_CACHE_DTYPE}")
+fi
+
+if [ -n "${KV_CACHE_MEMORY_BYTES:-}" ]; then
+  args+=(--kv-cache-memory-bytes "${KV_CACHE_MEMORY_BYTES}")
+fi
+
+if [ -n "${CPU_OFFLOAD_GB:-}" ]; then
+  args+=(--cpu-offload-gb "${CPU_OFFLOAD_GB}")
+fi
+
+if [ -n "${SWAP_SPACE:-}" ]; then
+  args+=(--swap-space "${SWAP_SPACE}")
+fi
+
 if [ "${TRUST_REMOTE_CODE}" = "true" ]; then
   args+=(--trust-remote-code)
+fi
+
+if [ "${LANGUAGE_MODEL_ONLY:-false}" = "true" ]; then
+  args+=(--language-model-only)
 fi
 
 vllm "${args[@]}" 2>&1 | tee -a /workspace/logs/vllm.log

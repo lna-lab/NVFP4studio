@@ -70,6 +70,14 @@ export function BenchPanel({
               </dd>
             </div>
             <div>
+              <dt>Peak Power</dt>
+              <dd>{metric(activeBenchmark.peak_power_watts, "W")}</dd>
+            </div>
+            <div>
+              <dt>Peak VRAM</dt>
+              <dd>{metric(activeBenchmark.peak_vram_used_mb, " MB")}</dd>
+            </div>
+            <div>
               <dt>Finish</dt>
               <dd>{activeBenchmark.finish_reason ?? "N/A"}</dd>
             </div>
@@ -131,4 +139,3 @@ export function BenchPanel({
     </aside>
   );
 }
-

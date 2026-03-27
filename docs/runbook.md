@@ -3,7 +3,7 @@
 ## 1. 初回セットアップ
 
 ```bash
-cd /media/shinkaman/INTEL_TUF/Sefetensors/NVFP4studio
+cd /path/to/NVFP4studio
 ./scripts/bootstrap.sh
 ```
 

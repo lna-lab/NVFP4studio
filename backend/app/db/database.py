@@ -24,11 +24,20 @@ CREATE TABLE IF NOT EXISTS benchmarks (
     temperature REAL,
     top_p REAL,
     max_tokens INTEGER,
+    peak_power_watts REAL,
+    peak_vram_used_mb INTEGER,
+    power_limit_watts REAL,
     finish_reason TEXT,
     error_message TEXT,
     created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
 """
+
+OPTIONAL_COLUMNS = {
+    "peak_power_watts": "REAL",
+    "peak_vram_used_mb": "INTEGER",
+    "power_limit_watts": "REAL",
+}
 
 
 def create_connection(database_path: Path) -> sqlite3.Connection:
@@ -40,5 +49,11 @@ def create_connection(database_path: Path) -> sqlite3.Connection:
 
 def initialize_database(connection: sqlite3.Connection) -> None:
     connection.executescript(SCHEMA_SQL)
+    existing_columns = {
+        row["name"] for row in connection.execute("PRAGMA table_info(benchmarks)").fetchall()
+    }
+    for column_name, column_type in OPTIONAL_COLUMNS.items():
+        if column_name in existing_columns:
+            continue
+        connection.execute(f"ALTER TABLE benchmarks ADD COLUMN {column_name} {column_type}")
     connection.commit()
-

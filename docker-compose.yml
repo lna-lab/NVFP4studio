@@ -39,16 +39,31 @@ services:
     build:
       context: ./backend
       dockerfile: Dockerfile
+    image: nvfp4studio-gateway
     container_name: nvfp4studio-gateway
     restart: unless-stopped
     env_file:
       - .env
+    environment:
+      PROJECT_ROOT: ${PROJECT_ROOT:-/workspace/project}
+      PROJECT_ENV_FILE: ${PROJECT_ENV_FILE:-/workspace/project/.env}
+      COMPOSE_FILE_PATH: ${COMPOSE_FILE_PATH:-/workspace/project/docker-compose.yml}
+      COMPOSE_PROJECT_NAME: ${COMPOSE_PROJECT_NAME:-nvfp4studio}
+    gpus: all
     depends_on:
       vllm:
         condition: service_healthy
     ports:
       - "${HOST_BIND_IP:-127.0.0.1}:${GATEWAY_PORT}:${GATEWAY_PORT}"
     volumes:
+      - .:${PROJECT_ROOT:-/workspace/project}
+      - /var/run/docker.sock:/var/run/docker.sock
+      - /usr/bin/docker:/usr/local/bin/host-docker:ro
+      - /usr/libexec/docker/cli-plugins:/usr/libexec/docker/cli-plugins:ro
+      - type: bind
+        source: ${MODEL_PATH}
+        target: ${MODEL_PATH}
+        read_only: true
       - ./data:/app/data
       - ./config/app:/app/config/app:ro
       - ./data/logs:/app/data/logs
@@ -72,6 +87,7 @@ services:
     build:
       context: ./frontend
       dockerfile: Dockerfile
+    image: nvfp4studio-frontend
     container_name: nvfp4studio-web
     restart: unless-stopped
     env_file:

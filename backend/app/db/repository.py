@@ -38,6 +38,9 @@ class BenchmarkRepository:
                 temperature,
                 top_p,
                 max_tokens,
+                peak_power_watts,
+                peak_vram_used_mb,
+                power_limit_watts,
                 finish_reason,
                 error_message
             ) VALUES (
@@ -58,6 +61,9 @@ class BenchmarkRepository:
                 :temperature,
                 :top_p,
                 :max_tokens,
+                :peak_power_watts,
+                :peak_vram_used_mb,
+                :power_limit_watts,
                 :finish_reason,
                 :error_message
             )
@@ -116,4 +122,3 @@ class BenchmarkRepository:
         payload = dict(row)
         payload["streaming"] = bool(payload["streaming"])
         return BenchmarkRecord(**payload)
-
