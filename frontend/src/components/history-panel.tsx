@@ -9,13 +9,34 @@ function metric(value?: number | null, suffix = ""): string {
   return `${value.toFixed(1)}${suffix}`;
 }
 
+function previewContent(content: string): string {
+  if (!content) {
+    return "Streaming...";
+  }
+  if (content.includes("</think>")) {
+    return content.split("</think>").pop()?.trim() || "Streaming...";
+  }
+  if (content.includes("<think>") || content.startsWith("Thinking Process:")) {
+    return "思考中...";
+  }
+  return content.replace(/^<think>\s*/i, "").trim() || "Streaming...";
+}
+
 interface Props {
   messages: ChatMessage[];
   recentBenchmarks: BenchmarkRecord[];
   onExport: (format: "json" | "csv") => void;
+  onClearMessages: () => void;
+  onSelectBenchmark: (benchmark: BenchmarkRecord) => void;
 }
 
-export function HistoryPanel({ messages, recentBenchmarks, onExport }: Props) {
+export function HistoryPanel({
+  messages,
+  recentBenchmarks,
+  onExport,
+  onClearMessages,
+  onSelectBenchmark
+}: Props) {
   const assistantMessages = messages.filter((message) => message.role === "assistant");
 
   return (
@@ -30,6 +51,9 @@ export function HistoryPanel({ messages, recentBenchmarks, onExport }: Props) {
             <button type="button" onClick={() => onExport("csv")}>
               CSV
             </button>
+            <button type="button" onClick={onClearMessages} disabled={messages.length === 0}>
+              Clear
+            </button>
           </div>
         </div>
 
@@ -38,15 +62,24 @@ export function HistoryPanel({ messages, recentBenchmarks, onExport }: Props) {
             <p className="muted">まだ会話がありません。</p>
           ) : (
             assistantMessages.map((message) => (
-              <article key={message.id} className="history-item">
+              <button
+                key={message.id}
+                type="button"
+                className="history-item history-button"
+                onClick={() => {
+                  if (message.benchmark) {
+                    onSelectBenchmark(message.benchmark);
+                  }
+                }}
+              >
                 <div className="history-title">
-                  {message.content.slice(0, 64) || "Streaming..."}
+                  {previewContent(message.content).slice(0, 64)}
                 </div>
                 <div className="history-meta">
                   <span>{metric(message.benchmark?.ttft_ms, "ms")}</span>
                   <span>{metric(message.benchmark?.completion_tokens_per_sec, " tok/s")}</span>
                 </div>
-              </article>
+              </button>
             ))
           )}
         </div>
@@ -61,13 +94,18 @@ export function HistoryPanel({ messages, recentBenchmarks, onExport }: Props) {
             <p className="muted">履歴はまだありません。</p>
           ) : (
             recentBenchmarks.map((item) => (
-              <article key={item.id} className="history-item">
+              <button
+                key={item.id}
+                type="button"
+                className="history-item history-button"
+                onClick={() => onSelectBenchmark(item)}
+              >
                 <div className="history-title">{item.model_name}</div>
                 <div className="history-meta">
                   <span>TTFT {metric(item.ttft_ms, "ms")}</span>
                   <span>LAT {metric(item.e2e_latency_ms, "ms")}</span>
                 </div>
-              </article>
+              </button>
             ))
           )}
         </div>
@@ -75,4 +113,3 @@ export function HistoryPanel({ messages, recentBenchmarks, onExport }: Props) {
     </aside>
   );
 }
-

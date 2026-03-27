@@ -71,12 +71,17 @@ button.primary {
 }
 
 textarea,
-input[type="number"] {
+input[type="number"],
+input[type="range"] {
   width: 100%;
+  color: var(--text);
+}
+
+textarea,
+input[type="number"] {
   border-radius: 18px;
   border: 1px solid var(--border);
   background: rgba(4, 14, 24, 0.82);
-  color: var(--text);
   padding: 0.95rem 1rem;
 }
 
@@ -149,6 +154,22 @@ dt {
   color: var(--warn);
 }
 
+.badge.neutral {
+  background: rgba(255, 255, 255, 0.06);
+  color: var(--text);
+}
+
+.small-copy {
+  font-size: 0.86rem;
+}
+
+.hero-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  justify-content: flex-end;
+}
+
 .chat-shell {
   display: flex;
   flex-direction: column;
@@ -215,6 +236,38 @@ dt {
   margin-top: 0.8rem;
 }
 
+.warning-note {
+  margin-top: 0.75rem;
+  border: 1px solid rgba(255, 154, 118, 0.26);
+  background: rgba(255, 154, 118, 0.08);
+  color: #ffd7c9;
+  border-radius: 14px;
+  padding: 0.75rem 0.85rem;
+  font-size: 0.92rem;
+}
+
+.reasoning-details {
+  margin-top: 0.75rem;
+  border: 1px solid rgba(255, 154, 118, 0.26);
+  background: rgba(255, 154, 118, 0.06);
+  border-radius: 14px;
+  padding: 0.75rem 0.85rem;
+}
+
+.reasoning-details summary {
+  cursor: pointer;
+  color: #ffd7c9;
+  font-size: 0.92rem;
+}
+
+.reasoning-body {
+  margin-top: 0.75rem;
+  white-space: pre-wrap;
+  line-height: 1.6;
+  color: var(--muted);
+  font-size: 0.92rem;
+}
+
 .composer {
   margin-top: 1rem;
   border-top: 1px solid var(--border);
@@ -230,10 +283,132 @@ dt {
   gap: 1rem;
 }
 
+.preset-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.6rem;
+  margin-top: 0.9rem;
+}
+
+.chip-button {
+  padding: 0.55rem 0.85rem;
+  background: rgba(255, 255, 255, 0.04);
+}
+
+.chip-button.active {
+  border-color: rgba(84, 212, 255, 0.6);
+  background: rgba(84, 212, 255, 0.12);
+  color: #dff7ff;
+}
+
 .slider-grid {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 0.8rem;
+}
+
+.slider-stack,
+.advanced-panel {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.9rem;
+}
+
+.range-control {
+  border: 1px solid var(--border);
+  border-radius: 20px;
+  background: rgba(255, 255, 255, 0.025);
+  padding: 0.85rem;
+}
+
+.range-header,
+.range-legend,
+.config-summary,
+.toggle-row {
+  display: flex;
+  justify-content: space-between;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+}
+
+.range-header strong {
+  color: var(--accent-2);
+}
+
+input[type="range"] {
+  appearance: none;
+  height: 6px;
+  background: linear-gradient(90deg, rgba(84, 212, 255, 0.8), rgba(110, 231, 168, 0.7));
+  border-radius: 999px;
+  margin: 0.35rem 0;
+}
+
+input[type="range"]::-webkit-slider-thumb {
+  appearance: none;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  background: #f7fbff;
+  border: 2px solid rgba(84, 212, 255, 0.95);
+}
+
+input[type="range"]::-moz-range-thumb {
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  background: #f7fbff;
+  border: 2px solid rgba(84, 212, 255, 0.95);
+}
+
+.range-legend,
+.config-summary {
+  color: var(--muted);
+  font-size: 0.84rem;
+}
+
+.toggle-row {
+  margin-top: 0.9rem;
+  align-items: center;
+}
+
+.toggle-card {
+  flex-direction: row;
+  align-items: center;
+  justify-content: space-between;
+  min-width: 150px;
+  padding: 0.8rem 0.9rem;
+  border: 1px solid var(--border);
+  border-radius: 18px;
+  background: rgba(255, 255, 255, 0.025);
+}
+
+.advanced-panel {
+  margin-top: 0.9rem;
+}
+
+.runtime-note {
+  margin-top: 0.9rem;
+  border-radius: 16px;
+  padding: 0.85rem 0.95rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+  border: 1px solid var(--border);
+}
+
+.runtime-note.ok {
+  background: rgba(110, 231, 168, 0.08);
+  border-color: rgba(110, 231, 168, 0.22);
+}
+
+.runtime-note.warn {
+  background: rgba(255, 216, 107, 0.08);
+  border-color: rgba(255, 216, 107, 0.22);
+}
+
+.runtime-note.danger {
+  background: rgba(255, 154, 118, 0.1);
+  border-color: rgba(255, 154, 118, 0.3);
 }
 
 label {
@@ -321,6 +496,11 @@ label {
   background: rgba(255, 255, 255, 0.025);
 }
 
+.history-button {
+  width: 100%;
+  text-align: left;
+}
+
 .gpu-title,
 .history-title {
   font-weight: 600;
@@ -375,10 +555,11 @@ label {
 
   .controls-grid,
   .slider-grid,
+  .slider-stack,
+  .advanced-panel,
   .kv-grid,
   .metrics-strip,
   .right-column {
     grid-template-columns: 1fr;
   }
 }
-

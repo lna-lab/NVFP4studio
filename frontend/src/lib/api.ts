@@ -1,6 +1,9 @@
 import type {
   BenchmarkRecord,
   ChatCompletionPayload,
+  ModelDescriptor,
+  RuntimeConfigRequest,
+  RuntimeConfigApplyResponse,
   SystemConfig,
   SystemStatus
 } from "@/types";
@@ -31,6 +34,33 @@ export async function fetchSystemConfig(): Promise<SystemConfig> {
   return fetchJson<SystemConfig>("/api/system/config");
 }
 
+export async function applyRuntimeConfig(request: RuntimeConfigRequest): Promise<RuntimeConfigApplyResponse> {
+  const response = await fetch(`${API_BASE}/api/system/runtime-config`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json"
+    },
+    body: JSON.stringify(request)
+  });
+
+  let payload: any = null;
+  try {
+    payload = await response.json();
+  } catch (error) {
+    payload = null;
+  }
+
+  if (!response.ok) {
+    const detail =
+      payload?.detail ??
+      payload?.message ??
+      `Request failed: ${response.status}`;
+    throw new Error(detail);
+  }
+
+  return payload as RuntimeConfigApplyResponse;
+}
+
 export async function fetchRecentBenchmarks(limit = 20): Promise<BenchmarkRecord[]> {
   const payload = await fetchJson<{ items: BenchmarkRecord[] }>(
     `/api/benchmarks/recent?limit=${limit}`
@@ -42,8 +72,8 @@ export async function fetchBenchmarkByRequestId(requestId: string): Promise<Benc
   return fetchJson<BenchmarkRecord>(`/api/benchmarks/request/${requestId}`);
 }
 
-export async function fetchModels(): Promise<{ data: Array<{ id: string }> }> {
-  return fetchJson<{ data: Array<{ id: string }> }>("/v1/models");
+export async function fetchModels(): Promise<{ data: ModelDescriptor[] }> {
+  return fetchJson<{ data: ModelDescriptor[] }>("/v1/models");
 }
 
 export async function createChatCompletion(
@@ -138,4 +168,3 @@ export async function streamChatCompletion(
 export function getExportUrl(format: "json" | "csv"): string {
   return `${API_BASE}/api/benchmarks/export?format=${format}`;
 }
-

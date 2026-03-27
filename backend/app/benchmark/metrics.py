@@ -49,6 +49,9 @@ class BenchmarkResult:
     temperature: float | None
     top_p: float | None
     max_tokens: int | None
+    peak_power_watts: float | None
+    peak_vram_used_mb: int | None
+    power_limit_watts: float | None
     finish_reason: str | None
     error_message: str | None
 
@@ -71,6 +74,9 @@ def build_benchmark_result(
     temperature: float | None,
     top_p: float | None,
     max_tokens: int | None,
+    peak_power_watts: float | None,
+    peak_vram_used_mb: int | None,
+    power_limit_watts: float | None,
     finish_reason: str | None,
     error_message: str | None,
 ) -> BenchmarkResult:
@@ -92,6 +98,9 @@ def build_benchmark_result(
         temperature=temperature,
         top_p=top_p,
         max_tokens=max_tokens,
+        peak_power_watts=peak_power_watts,
+        peak_vram_used_mb=peak_vram_used_mb,
+        power_limit_watts=power_limit_watts,
         finish_reason=finish_reason,
         error_message=error_message,
     )
@@ -123,4 +132,3 @@ def extract_finish_reason(chunk: dict[str, Any]) -> str | None:
     if not choices:
         return None
     return choices[0].get("finish_reason")
-

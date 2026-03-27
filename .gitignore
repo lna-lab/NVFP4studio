@@ -18,6 +18,9 @@ data/exports/*
 !data/exports/.gitkeep
 data/logs/*
 !data/logs/.gitkeep
+data/runtime/*
+!data/runtime/.gitkeep
 frontend/.next
 frontend/node_modules
 backend/.venv
+.venv-llm-compressor

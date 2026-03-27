@@ -22,6 +22,9 @@ def test_build_benchmark_result_rates():
         temperature=0.7,
         top_p=0.95,
         max_tokens=256,
+        peak_power_watts=210.5,
+        peak_vram_used_mb=32768,
+        power_limit_watts=600.0,
         finish_reason="stop",
         error_message=None,
     )
@@ -30,9 +33,10 @@ def test_build_benchmark_result_rates():
     assert result.e2e_latency_ms == 5000.0
     assert result.completion_tokens_per_sec is not None
     assert result.total_tokens_per_sec is not None
+    assert result.peak_power_watts == 210.5
+    assert result.peak_vram_used_mb == 32768
 
 
 def test_extract_delta_text_string():
     chunk = {"choices": [{"delta": {"content": "こんにちは"}}]}
     assert extract_delta_text(chunk) == "こんにちは"
-

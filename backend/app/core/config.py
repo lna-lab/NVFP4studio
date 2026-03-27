@@ -31,6 +31,11 @@ class Settings:
     log_level: str
     request_timeout_seconds: int
     bind_localhost_only: bool
+    project_root: str
+    project_env_file: str
+    compose_file_path: str
+    compose_project_name: str
+    runtime_apply_timeout_seconds: int
 
     @property
     def database_path(self) -> Path:
@@ -56,11 +61,11 @@ def get_settings() -> Settings:
     return Settings(
         model_path=os.getenv(
             "MODEL_PATH",
-            "/media/shinkaman/INTEL_TUF/Sefetensors/nvfp4/Huihui-Qwen3.5-35B-A3B-abliterated-NVFP4",
+            "/absolute/path/to/your/nvfp4-model",
         ),
         served_model_name=os.getenv(
             "SERVED_MODEL_NAME",
-            "Huihui-Qwen3.5-35B-A3B-abliterated-NVFP4",
+            "your-nvfp4-model",
         ),
         vllm_base_url=os.getenv("VLLM_BASE_URL", "http://vllm:8010"),
         vllm_port=int(os.getenv("VLLM_PORT", "8010")),
@@ -76,5 +81,9 @@ def get_settings() -> Settings:
         log_level=os.getenv("LOG_LEVEL", "INFO"),
         request_timeout_seconds=int(os.getenv("REQUEST_TIMEOUT_SECONDS", "600")),
         bind_localhost_only=_env_bool("BIND_LOCALHOST_ONLY", True),
+        project_root=os.getenv("PROJECT_ROOT", "/workspace/project"),
+        project_env_file=os.getenv("PROJECT_ENV_FILE", "/workspace/project/.env"),
+        compose_file_path=os.getenv("COMPOSE_FILE_PATH", "/workspace/project/docker-compose.yml"),
+        compose_project_name=os.getenv("COMPOSE_PROJECT_NAME", "nvfp4studio"),
+        runtime_apply_timeout_seconds=int(os.getenv("RUNTIME_APPLY_TIMEOUT_SECONDS", "600")),
     )
-

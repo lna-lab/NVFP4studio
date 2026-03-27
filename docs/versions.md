@@ -5,11 +5,13 @@
 | Component | Version |
 | --- | --- |
 | vLLM base image | `vllm/vllm-openai:v0.17.1` |
-| Transformers git ref | `5a098a1` |
+| Transformers git ref | `09832b2ae515cfbd020327f5d3ba2dafe6edf83c` |
+| llm-compressor git ref | `cf3bd6463e8d471ad6c8cc20a6a9b053c178e555` |
 | Python base image | `python:3.12-slim-bookworm` |
 | FastAPI | `0.115.12` |
 | Uvicorn | `0.34.0` |
 | httpx | `0.28.1` |
+| nvidia-ml-py | `12.575.51` |
 | Node base image | `node:20-bookworm-slim` |
 | Next.js | `14.2.13` |
 | React | `18.3.1` |

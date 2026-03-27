@@ -12,6 +12,7 @@ from fastapi.responses import JSONResponse, StreamingResponse
 from app.benchmark.metrics import build_benchmark_result, extract_delta_text, extract_finish_reason, utcnow
 from app.core.config import get_settings
 from app.db.repository import BenchmarkRepository
+from app.services.gpu_monitor import GPUPeakSampler
 from app.services.vllm_client import VllmClient
 
 
@@ -47,6 +48,9 @@ def _prepare_payload(payload: dict[str, Any]) -> dict[str, Any]:
     prepared.setdefault("temperature", settings.default_temperature)
     prepared.setdefault("top_p", settings.default_top_p)
     prepared.setdefault("max_tokens", settings.default_max_tokens)
+    chat_template_kwargs = dict(prepared.get("chat_template_kwargs") or {})
+    chat_template_kwargs.setdefault("enable_thinking", False)
+    prepared["chat_template_kwargs"] = chat_template_kwargs
 
     if prepared.get("stream"):
         stream_options = dict(prepared.get("stream_options") or {})
@@ -85,48 +89,62 @@ async def chat_completions(
     temperature = prepared_payload.get("temperature")
     top_p = prepared_payload.get("top_p")
     max_tokens = prepared_payload.get("max_tokens")
+    gpu_sampler = GPUPeakSampler()
+    await gpu_sampler.start()
 
     if not streaming:
-        upstream = await vllm_client.create_chat_completion(prepared_payload)
-        finished_at = utcnow()
         try:
-            body = upstream.json()
-        except json.JSONDecodeError:
-            body = {"raw": upstream.text}
-        usage = body.get("usage") or {}
-        benchmark = build_benchmark_result(
-            request_id=request_id,
-            upstream_request_id=body.get("id"),
-            model_name=body.get("model", model_name),
-            prompt_tokens=usage.get("prompt_tokens"),
-            completion_tokens=usage.get("completion_tokens"),
-            total_tokens=usage.get("total_tokens"),
-            started_at=started_at,
-            first_token_at=None,
-            finished_at=finished_at,
-            streaming=False,
-            temperature=temperature,
-            top_p=top_p,
-            max_tokens=max_tokens,
-            finish_reason=((body.get("choices") or [{}])[0]).get("finish_reason"),
-            error_message=None if upstream.is_success else upstream.text,
-        )
-        record = await asyncio.to_thread(repository.insert, benchmark)
-        return JSONResponse(
-            content=body,
-            status_code=upstream.status_code,
-            headers={
-                "x-nvfp4studio-request-id": request_id,
-                "x-nvfp4studio-benchmark-id": str(record.id),
-            },
-        )
+            upstream = await vllm_client.create_chat_completion(prepared_payload)
+            finished_at = utcnow()
+            try:
+                body = upstream.json()
+            except json.JSONDecodeError:
+                body = {"raw": upstream.text}
+            usage = body.get("usage") or {}
+            gpu_peak = await gpu_sampler.stop()
+            benchmark = build_benchmark_result(
+                request_id=request_id,
+                upstream_request_id=body.get("id"),
+                model_name=body.get("model", model_name),
+                prompt_tokens=usage.get("prompt_tokens"),
+                completion_tokens=usage.get("completion_tokens"),
+                total_tokens=usage.get("total_tokens"),
+                started_at=started_at,
+                first_token_at=None,
+                finished_at=finished_at,
+                streaming=False,
+                temperature=temperature,
+                top_p=top_p,
+                max_tokens=max_tokens,
+                peak_power_watts=gpu_peak.peak_power_watts,
+                peak_vram_used_mb=gpu_peak.peak_vram_used_mb,
+                power_limit_watts=gpu_peak.power_limit_watts,
+                finish_reason=((body.get("choices") or [{}])[0]).get("finish_reason"),
+                error_message=None if upstream.is_success else upstream.text,
+            )
+            record = await asyncio.to_thread(repository.insert, benchmark)
+            return JSONResponse(
+                content=body,
+                status_code=upstream.status_code,
+                headers={
+                    "x-nvfp4studio-request-id": request_id,
+                    "x-nvfp4studio-benchmark-id": str(record.id),
+                },
+            )
+        finally:
+            await gpu_sampler.stop()
 
-    upstream = await vllm_client.create_chat_completion_stream(prepared_payload)
+    try:
+        upstream = await vllm_client.create_chat_completion_stream(prepared_payload)
+    except Exception:
+        await gpu_sampler.stop()
+        raise
 
     if upstream.status_code >= 400:
         finished_at = utcnow()
         body_bytes = await upstream.aread()
         body_text = body_bytes.decode("utf-8", errors="replace")
+        gpu_peak = await gpu_sampler.stop()
         benchmark = build_benchmark_result(
             request_id=request_id,
             upstream_request_id=None,
@@ -141,6 +159,9 @@ async def chat_completions(
             temperature=temperature,
             top_p=top_p,
             max_tokens=max_tokens,
+            peak_power_watts=gpu_peak.peak_power_watts,
+            peak_vram_used_mb=gpu_peak.peak_vram_used_mb,
+            power_limit_watts=gpu_peak.power_limit_watts,
             finish_reason=None,
             error_message=body_text,
         )
@@ -181,6 +202,7 @@ async def chat_completions(
                 yield (line + "\n").encode("utf-8")
 
             finished_at = utcnow()
+            gpu_peak = await gpu_sampler.stop()
             benchmark = build_benchmark_result(
                 request_id=request_id,
                 upstream_request_id=upstream_request_id,
@@ -195,12 +217,16 @@ async def chat_completions(
                 temperature=temperature,
                 top_p=top_p,
                 max_tokens=max_tokens,
+                peak_power_watts=gpu_peak.peak_power_watts,
+                peak_vram_used_mb=gpu_peak.peak_vram_used_mb,
+                power_limit_watts=gpu_peak.power_limit_watts,
                 finish_reason=finish_reason,
                 error_message=None,
             )
             await asyncio.to_thread(repository.insert, benchmark)
         except Exception as exc:
             finished_at = utcnow()
+            gpu_peak = await gpu_sampler.stop()
             benchmark = build_benchmark_result(
                 request_id=request_id,
                 upstream_request_id=upstream_request_id,
@@ -215,12 +241,16 @@ async def chat_completions(
                 temperature=temperature,
                 top_p=top_p,
                 max_tokens=max_tokens,
+                peak_power_watts=gpu_peak.peak_power_watts,
+                peak_vram_used_mb=gpu_peak.peak_vram_used_mb,
+                power_limit_watts=gpu_peak.power_limit_watts,
                 finish_reason=finish_reason,
                 error_message=str(exc),
             )
             await asyncio.to_thread(repository.insert, benchmark)
             raise
         finally:
+            await gpu_sampler.stop()
             await upstream.aclose()
 
     return StreamingResponse(
@@ -232,4 +262,3 @@ async def chat_completions(
             "x-nvfp4studio-request-id": request_id,
         },
     )
-

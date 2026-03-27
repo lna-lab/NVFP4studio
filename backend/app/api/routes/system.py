@@ -1,9 +1,15 @@
 from __future__ import annotations
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, HTTPException
 
 from app.core.config import Settings, get_settings
-from app.models.schemas import HealthResponse, SystemConfigResponse, SystemStatusResponse
+from app.models.schemas import (
+    HealthResponse,
+    RuntimeConfigApplyRequest,
+    RuntimeConfigApplyResponse,
+    SystemConfigResponse,
+    SystemStatusResponse,
+)
 from app.services.system_service import SystemService
 from app.services.vllm_client import VllmClient
 
@@ -39,3 +45,13 @@ async def system_status(service: SystemService = Depends(get_system_service)) ->
 async def system_config(service: SystemService = Depends(get_system_service)) -> SystemConfigResponse:
     return service.get_config()
 
+
+@router.post("/api/system/runtime-config", response_model=RuntimeConfigApplyResponse)
+async def apply_runtime_config(
+    payload: RuntimeConfigApplyRequest,
+    service: SystemService = Depends(get_system_service),
+) -> RuntimeConfigApplyResponse:
+    result = await service.apply_runtime_config(payload)
+    if not result.accepted:
+        raise HTTPException(status_code=400, detail=result.message)
+    return result
