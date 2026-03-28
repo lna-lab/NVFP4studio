@@ -50,6 +50,22 @@ args=(
   --gpu-memory-utilization "${GPU_MEMORY_UTILIZATION}"
 )
 
+if [ -n "${PIPELINE_PARALLEL_SIZE:-}" ]; then
+  args+=(--pipeline-parallel-size "${PIPELINE_PARALLEL_SIZE}")
+fi
+
+if [ "${ENABLE_EXPERT_PARALLEL:-false}" = "true" ]; then
+  args+=(--enable-expert-parallel)
+fi
+
+if [ -n "${EXPERT_PLACEMENT_STRATEGY:-}" ]; then
+  args+=(--expert-placement-strategy "${EXPERT_PLACEMENT_STRATEGY}")
+fi
+
+if [ -n "${ALL2ALL_BACKEND:-}" ]; then
+  args+=(--all2all-backend "${ALL2ALL_BACKEND}")
+fi
+
 if [ -n "${MAX_NUM_SEQS:-}" ]; then
   args+=(--max-num-seqs "${MAX_NUM_SEQS}")
 fi
@@ -74,12 +90,40 @@ if [ -n "${SWAP_SPACE:-}" ]; then
   args+=(--swap-space "${SWAP_SPACE}")
 fi
 
+if [ -n "${MAX_CUDAGRAPH_CAPTURE_SIZE:-}" ]; then
+  args+=(--max-cudagraph-capture-size "${MAX_CUDAGRAPH_CAPTURE_SIZE}")
+fi
+
+if [ -n "${MOE_BACKEND:-}" ]; then
+  args+=(--moe-backend "${MOE_BACKEND}")
+fi
+
 if [ "${TRUST_REMOTE_CODE}" = "true" ]; then
   args+=(--trust-remote-code)
 fi
 
 if [ "${LANGUAGE_MODEL_ONLY:-false}" = "true" ]; then
   args+=(--language-model-only)
+fi
+
+if [ "${SKIP_MM_PROFILING:-false}" = "true" ]; then
+  args+=(--skip-mm-profiling)
+fi
+
+if [ -n "${LIMIT_MM_PER_PROMPT:-}" ]; then
+  args+=(--limit-mm-per-prompt "${LIMIT_MM_PER_PROMPT}")
+fi
+
+if [ "${ENFORCE_EAGER:-false}" = "true" ]; then
+  args+=(--enforce-eager)
+fi
+
+if [ "${DISABLE_CUSTOM_ALL_REDUCE:-false}" = "true" ]; then
+  args+=(--disable-custom-all-reduce)
+fi
+
+if [ "${ENABLE_FLASHINFER_AUTOTUNE:-false}" = "true" ]; then
+  args+=(--enable-flashinfer-autotune)
 fi
 
 vllm "${args[@]}" 2>&1 | tee -a /workspace/logs/vllm.log

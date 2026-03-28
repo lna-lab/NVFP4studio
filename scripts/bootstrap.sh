@@ -42,7 +42,6 @@ if ! docker run --rm --pull missing --gpus all "${GPU_SMOKE_IMAGE}" nvidia-smi >
   exit 1
 fi
 
-docker compose pull vllm
-docker compose build gateway frontend
+docker compose build vllm gateway frontend
 
 echo "bootstrap 完了: .env と build キャッシュを準備しました。"

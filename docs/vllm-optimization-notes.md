@@ -13,6 +13,15 @@
 - `3G` はさらに VRAM を下げられましたが、quality canary が `2/3` に落ちたため不採用です。
 - `2インスタンス x 2シーケンス` は成立しましたが、総 throughput を伸ばす設定というより multi-tenant 隔離向きでした。
 
+## 397B / A17B 速度メモ
+
+- `huihui-ai/Huihui-Qwen3.5-397B-A17B-abliterated-NVFP4` を `4x RTX PRO 6000 Blackwell` で回したとき、遅さの主因は GPU 能力不足ではなく `--enforce-eager` を含む保守設定だった。
+- `MAX_MODEL_LEN=16384` + `KV_CACHE_MEMORY_BYTES=8G` + `TENSOR_PARALLEL_SIZE=4` のまま、`ENFORCE_EAGER=false` と `DISABLE_CUSTOM_ALL_REDUCE=false` に切り替えるだけで、長文 streaming は約 `18.5 tok/s` から約 `81.4-83.0 tok/s` まで上がった。
+- ただしこの 4GPU PCIe 構成では、vLLM ログ上で custom all-reduce は非対応として自動で NCCL にフォールバックした。つまり実際の主因は `ENFORCE_EAGER=false` 側にある。
+- `speed` profile 相当の厚い予約でも動いたが、本検証では約 `78.3 tok/s` で、最速ではなかった。
+- `flashinfer_cutedsl + autotune` は worker 初期化が不安定で、現時点では既定値にしない。
+- したがって、397B / A17B の現時点のローカル既定値は「`16K / 8G / TP4` を維持しつつ、non-eager + custom all-reduce 有効」を採る。
+
 ## 目的
 
 - `-c 256K` を維持したまま VRAM 使用量をできるだけ削る
@@ -32,6 +41,7 @@
   - `CPU_OFFLOAD_GB=0`
   - `SWAP_SPACE=16`
 - ここまでは README に反映してよい結論として扱います。
+- ただし 397B / A17B の速度重視運用では、同じ `memory` 系の予約方針でも `ENFORCE_EAGER=false` と `DISABLE_CUSTOM_ALL_REDUCE=false` を既定にする。
 
 ## README に反映している判断
 
@@ -42,6 +52,36 @@
 - `2x2` は成立するが、throughput 強化策としては扱わない
 
 ## 実測メモ
+
+### 397B / A17B の speed sweep
+
+- 検証対象
+  - モデル: `huihui-ai/Huihui-Qwen3.5-397B-A17B-abliterated-NVFP4`
+  - GPU: `RTX PRO 6000 Blackwell x4`
+  - context: `16384`
+  - long streaming benchmark: `max_tokens=512`
+- 参照 benchmark record
+  - `id=66`
+    - baseline safe
+    - `ttft_ms=311.07`
+    - `completion_tokens_per_sec=18.5252`
+  - `id=68`
+    - non-eager 系 memory path
+    - `ttft_ms=332.85`
+    - `completion_tokens_per_sec=81.4049`
+  - `id=70`
+    - non-eager 系 memory path
+    - `ttft_ms=339.85`
+    - `completion_tokens_per_sec=82.9839`
+  - `id=72`
+    - `speed` profile 寄り
+    - `ttft_ms=341.65`
+    - `completion_tokens_per_sec=78.2765`
+- 解釈
+- `18 tok/s` 台だった経路でも、GPU 電力は十分に使い切れておらず、CPU フォールバックではなかった。
+- 速度の大部分は `eager` と通信経路の設定で決まり、VRAM をさらに厚く予約しても必ずしも速くはならない。
+- `DISABLE_CUSTOM_ALL_REDUCE=false` を維持しても、この構成では結果的に NCCL フォールバックなので、ここは「明示 disable しない」程度の意味に留まる。
+- このモデルでは、今のところ「軽い予約 + non-eager」が一番実用的だった。
 
 ### 比較の軸
 
@@ -158,6 +198,7 @@
 
 - `scripts/probe_kv_budget.py` を追加した
 - `scripts/probe_dual_instance.py` を追加した
+- `scripts/probe_speed_paths.py` を追加した
 - この script は budget ごとに
   - vLLM 再構成
   - process cmdline 検証
@@ -175,6 +216,7 @@
   - `6G`: 安定
   - `4G`: 安定かつ最良
   - `3G`: 速度は維持したが quality canary が崩れたため不採用
+  - `397B / A17B`: `16K / 8G / TP4` でも non-eager 化で `80 tok/s` 級まで伸びた
 
 ## 参照した benchmark record
 

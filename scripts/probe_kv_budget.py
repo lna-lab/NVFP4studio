@@ -17,7 +17,6 @@ ROOT_DIR = Path(__file__).resolve().parents[1]
 ENV_PATH = ROOT_DIR / ".env"
 COMPOSE_FILE = ROOT_DIR / "docker-compose.yml"
 CONTAINER_NAME = "nvfp4studio-vllm"
-PROJECT_NAME = "nvfp4studio"
 OUT_DIR = ROOT_DIR / "data" / "exports"
 
 RUNTIME_UPDATES = {
@@ -38,19 +37,78 @@ PERFORMANCE_PROMPT = {
 
 QUALITY_CANARIES = [
     {
+        "name": "jp_identity",
+        "system": "Reply in Japanese. Keep it concise. One sentence only. Do not reveal hidden reasoning.",
+        "user": "あなたの役割を日本語で1文だけで自己紹介して。",
+        "validator": "japanese_single_sentence",
+        "max_tokens": 96,
+    },
+    {
         "name": "sequence_rule",
         "system": "Reply in Japanese. Be concise. Do not reveal hidden reasoning.",
         "user": "数列 2, 6, 12, 20 の次の2項と規則を1文で答えて。",
+        "validator": "sequence_rule",
+        "max_tokens": 96,
     },
     {
         "name": "translation_en",
         "system": "Translate to English only. No extra commentary.",
         "user": "品質を保ちながら VRAM を削る。",
+        "validator": "translation_en",
+        "max_tokens": 64,
     },
     {
-        "name": "json_structure",
+        "name": "strict_json",
         "system": "Return strict JSON only.",
-        "user": "mode は local、goal は preserve quality while reducing VRAM にして JSON を返して。",
+        "user": "mode は local、goal は preserve quality while reducing VRAM、tone は calm にして JSON を返して。",
+        "validator": "strict_json",
+        "max_tokens": 96,
+    },
+    {
+        "name": "structured_extract",
+        "system": "Return strict JSON only.",
+        "user": "次の文から name, gpu, context を抽出して JSON で返して。『Ken uses RTX PRO 6000 Blackwell with 256K context.』",
+        "validator": "structured_extract",
+        "max_tokens": 96,
+    },
+    {
+        "name": "reasoning_suppression",
+        "system": "Reply in Japanese. One short paragraph. Do not reveal hidden reasoning or chain-of-thought.",
+        "user": "VRAM節約をしつつ品質を守る方針を短く説明して。",
+        "validator": "no_thinking_leak",
+        "max_tokens": 128,
+    },
+    {
+        "name": "long_strict_json",
+        "system": "Return strict JSON only. No markdown. No commentary.",
+        "user": (
+            "次の条件を満たす JSON を返して。"
+            "top-level keys は summary, runtime, checklist, notes の4つだけ。"
+            "summary には model='Huihui-Qwen3.5-397B-A17B-abliterated-NVFP4',"
+            " target_context='256K', budgets=['8G','10G'] を入れる。"
+            "runtime には tp=4, pp=1, kv_dtype='fp8', eager=true を入れる。"
+            "checklist は4要素の配列で、順に 'load model', 'verify json', 'verify extraction', 'record latency'。"
+            "notes は {language:'ja', strict:true, goal:'long-json-canary'} にする。"
+        ),
+        "validator": "long_strict_json",
+        "max_tokens": 256,
+    },
+    {
+        "name": "long_structured_extract",
+        "system": "Return strict JSON only. No markdown. No commentary.",
+        "user": (
+            "次のメモから operator, model, tp, pp, budgets, context, tasks, risk を抽出して JSON で返して。"
+            "メモ: "
+            "'Operator: Ken Arai. "
+            "Model: Huihui-Qwen3.5-397B-A17B-abliterated-NVFP4. "
+            "Parallelism: TP=4, PP=1. "
+            "Candidate budgets: 8G and 10G. "
+            "Target context: 256K. "
+            "Tasks: long JSON canary, nested extraction canary, latency check. "
+            "Risk note: avoid reasoning leak in JSON mode.'"
+        ),
+        "validator": "long_structured_extract",
+        "max_tokens": 256,
     },
 ]
 
@@ -76,6 +134,10 @@ def read_env_file(path: Path) -> tuple[list[str], dict[str, str]]:
     return lines, values
 
 
+def compose_project_name(env_values: dict[str, str]) -> str:
+    return env_values.get("COMPOSE_PROJECT_NAME") or ROOT_DIR.name.lower()
+
+
 def write_env_updates(path: Path, updates: dict[str, str]) -> None:
     lines, _ = read_env_file(path)
     for key, value in updates.items():
@@ -94,6 +156,7 @@ def run_command(command: list[str], *, cwd: Path | None = None) -> subprocess.Co
 
 
 def recreate_vllm() -> None:
+    _, env_values = read_env_file(ENV_PATH)
     run_command(
         [
             "docker",
@@ -101,7 +164,7 @@ def recreate_vllm() -> None:
             "--env-file",
             str(ENV_PATH),
             "-p",
-            PROJECT_NAME,
+            compose_project_name(env_values),
             "-f",
             str(COMPOSE_FILE),
             "up",
@@ -186,17 +249,26 @@ def extract_assistant_text(payload: dict[str, Any]) -> str:
     return ""
 
 
-def run_non_stream(host: str, port: int, model_name: str, system: str, user: str) -> tuple[str | None, str]:
+def run_non_stream(
+    host: str,
+    port: int,
+    model_name: str,
+    system: str,
+    user: str,
+    *,
+    max_tokens: int,
+) -> tuple[str | None, str]:
     payload = {
         "model": model_name,
         "stream": False,
         "temperature": 0.0,
         "top_p": 1.0,
-        "max_tokens": 128,
+        "max_tokens": max_tokens,
         "messages": [
             {"role": "system", "content": system},
             {"role": "user", "content": user},
         ],
+        "chat_template_kwargs": {"enable_thinking": False},
     }
     data = json.dumps(payload).encode("utf-8")
     request = urllib.request.Request(
@@ -221,6 +293,7 @@ def run_stream(host: str, port: int, model_name: str, system: str, user: str) ->
             {"role": "system", "content": system},
             {"role": "user", "content": user},
         ],
+        "chat_template_kwargs": {"enable_thinking": False},
     }
     data = json.dumps(payload).encode("utf-8")
     request = urllib.request.Request(
@@ -247,27 +320,105 @@ def run_stream(host: str, port: int, model_name: str, system: str, user: str) ->
         return request_id, "".join(collected).strip()
 
 
-def validate_canary(name: str, text: str) -> tuple[bool, str]:
+def validate_canary(validator: str, text: str) -> tuple[bool, str]:
     normalized = text.strip()
     lowered = normalized.lower()
 
-    if name == "sequence_rule":
+    if "<think>" in lowered or "</think>" in lowered or "thinking process" in lowered:
+        return False, "thinking leak detected"
+
+    if validator == "japanese_single_sentence":
+        passed = any(ch in normalized for ch in "あいうえおアイウエオ一-龯々。") and normalized.count("。") <= 1
+        return passed, "日本語で1文に収まっているかを確認"
+
+    if validator == "sequence_rule":
         passed = "30" in normalized and "42" in normalized
         return passed, "30 と 42 を含むかを確認"
 
-    if name == "translation_en":
+    if validator == "translation_en":
         passed = "quality" in lowered and "vram" in lowered and (
-            "reduce" in lowered or "lower" in lowered or "decrease" in lowered
+            "reduce" in lowered or "lower" in lowered or "decrease" in lowered or "trim" in lowered
         )
         return passed, "quality / VRAM / reduce 系の語を含むかを確認"
 
-    if name == "json_structure":
+    if validator == "strict_json":
         try:
             payload = json.loads(normalized)
         except json.JSONDecodeError:
             return False, "JSON として解釈できない"
-        passed = isinstance(payload, dict) and set(payload.keys()) == {"mode", "goal"}
-        return passed, "mode と goal のみを持つ JSON かを確認"
+        passed = (
+            isinstance(payload, dict)
+            and payload.get("mode") == "local"
+            and payload.get("tone") == "calm"
+            and "preserve quality" in payload.get("goal", "")
+        )
+        return passed, "strict JSON で mode / goal / tone が正しいかを確認"
+
+    if validator == "structured_extract":
+        try:
+            payload = json.loads(normalized)
+        except json.JSONDecodeError:
+            return False, "JSON として解釈できない"
+        passed = (
+            isinstance(payload, dict)
+            and payload.get("name") == "Ken"
+            and "RTX PRO 6000 Blackwell" in payload.get("gpu", "")
+            and "256K" in payload.get("context", "")
+        )
+        return passed, "抽出 JSON の name / gpu / context が正しいかを確認"
+
+    if validator == "long_strict_json":
+        try:
+            payload = json.loads(normalized)
+        except json.JSONDecodeError:
+            return False, "JSON として解釈できない"
+        passed = (
+            isinstance(payload, dict)
+            and set(payload.keys()) == {"summary", "runtime", "checklist", "notes"}
+            and payload.get("summary", {}).get("model") == "Huihui-Qwen3.5-397B-A17B-abliterated-NVFP4"
+            and payload.get("summary", {}).get("target_context") == "256K"
+            and payload.get("summary", {}).get("budgets") == ["8G", "10G"]
+            and payload.get("runtime", {}).get("tp") == 4
+            and payload.get("runtime", {}).get("pp") == 1
+            and payload.get("runtime", {}).get("kv_dtype") == "fp8"
+            and payload.get("runtime", {}).get("eager") is True
+            and payload.get("checklist") == [
+                "load model",
+                "verify json",
+                "verify extraction",
+                "record latency",
+            ]
+            and payload.get("notes", {}).get("language") == "ja"
+            and payload.get("notes", {}).get("strict") is True
+            and payload.get("notes", {}).get("goal") == "long-json-canary"
+        )
+        return passed, "長めの strict JSON で nested keys / arrays / bool が正しいかを確認"
+
+    if validator == "long_structured_extract":
+        try:
+            payload = json.loads(normalized)
+        except json.JSONDecodeError:
+            return False, "JSON として解釈できない"
+        passed = (
+            isinstance(payload, dict)
+            and payload.get("operator") == "Ken Arai"
+            and payload.get("model") == "Huihui-Qwen3.5-397B-A17B-abliterated-NVFP4"
+            and payload.get("tp") == 4
+            and payload.get("pp") == 1
+            and payload.get("budgets") == ["8G", "10G"]
+            and payload.get("context") == "256K"
+            and payload.get("tasks") == [
+                "long JSON canary",
+                "nested extraction canary",
+                "latency check",
+            ]
+            and "reasoning leak" in str(payload.get("risk", "")).lower()
+        )
+        return passed, "長めの抽出タスクで複数フィールドと配列が正しいかを確認"
+
+    if validator == "no_thinking_leak":
+        passed = len(normalized) > 0
+        return passed, "思考漏れなしで短い応答になっているかを確認"
 
     return False, "validator not found"
 
@@ -378,12 +529,14 @@ def main() -> int:
                     model_name,
                     case["system"],
                     case["user"],
+                    max_tokens=case.get("max_tokens", 128),
                 )
                 benchmark = fetch_benchmark(args.gateway_host, args.gateway_port, request_id) if request_id else None
-                passed, note = validate_canary(case["name"], output_text)
+                passed, note = validate_canary(case.get("validator", case["name"]), output_text)
                 canaries.append(
                     {
                         "name": case["name"],
+                        "validator": case.get("validator", case["name"]),
                         "request_id": request_id,
                         "passed": passed,
                         "note": note,

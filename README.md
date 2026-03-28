@@ -33,6 +33,9 @@ Language: [English](#english) | [中文](#中文) | [日本語](#日本語)
 - `memory + -c 256K + KV budget 4G` reached about `34.2GB` peak VRAM with quality canary `3/3`.
 - `memory + -c 256K + KV budget 3G` reduced VRAM further, but quality canary fell to `2/3`, so it is not the current recommendation.
 - `2 instances x 2 seqs` worked as a multi-tenant layout, but did not outperform `1 instance x 2 seqs` in aggregate throughput.
+- On `4x RTX PRO 6000 Blackwell`, `huihui-ai/Huihui-Qwen3.5-397B-A17B-abliterated-NVFP4` at `16K / 8G / TP4` moved from about `18.5 tok/s` to about `83 tok/s` by switching to `ENFORCE_EAGER=false`; on this PCIe-only 4-GPU topology, vLLM still auto-falls back to NCCL for all-reduce.
+- A more aggressive `speed` profile with higher VRAM reservation reached about `78.3 tok/s`, so the current fast-path recommendation is still the lighter `16K / 8G` setup with non-eager execution.
+- `flashinfer_cutedsl + autotune` showed worker initialization instability in this environment, so it is not the current default recommendation.
 
 ---
 
@@ -82,6 +85,12 @@ Language: [English](#english) | [中文](#中文) | [日本語](#日本語)
 - That setting kept quality canary at `3/3` while reducing peak VRAM to about `34.2GB`.
 - `3G` reduced VRAM a bit more, but quality dropped, so it is currently rejected.
 - `2x2` is useful for tenant isolation and comparison workloads, not as a guaranteed throughput upgrade.
+- For `huihui-ai/Huihui-Qwen3.5-397B-A17B-abliterated-NVFP4` on `4x RTX PRO 6000 Blackwell`, the current fastest verified local point is:
+  `MAX_MODEL_LEN=16384` + `KV_CACHE_MEMORY_BYTES=8G` + `TENSOR_PARALLEL_SIZE=4` + `ENFORCE_EAGER=false` + `DISABLE_CUSTOM_ALL_REDUCE=false`
+- In the recorded local sweep, that path moved long streaming generation from about `18.5 tok/s` to about `81.4-83.0 tok/s`.
+- On this PCIe-only 4-GPU setup, vLLM logged that custom all-reduce is not supported and fell back to NCCL automatically, so the dominant win came from disabling eager execution.
+- A higher-reservation `speed` profile still worked, but landed at about `78.3 tok/s`, so it is not the current fast default for this model.
+- `flashinfer_cutedsl + autotune` was not stable enough to adopt yet in this environment.
 
 ## Verified Local URLs
 
@@ -237,6 +246,12 @@ The current verified model may emit reasoning-style text such as `Thinking Proce
 - 这一设置把峰值 VRAM 降到约 `34.2GB`，同时 quality canary 维持在 `3/3`。
 - `3G` 虽然还能再省一点 VRAM，但 quality canary 下降到 `2/3`，当前不推荐。
 - `2x2` 更适合多租户隔离与对比实验，不应直接理解为吞吐提升方案。
+- 对于 `4x RTX PRO 6000 Blackwell` 上的 `huihui-ai/Huihui-Qwen3.5-397B-A17B-abliterated-NVFP4`，当前验证过的最快本地路径是:
+  `MAX_MODEL_LEN=16384` + `KV_CACHE_MEMORY_BYTES=8G` + `TENSOR_PARALLEL_SIZE=4` + `ENFORCE_EAGER=false` + `DISABLE_CUSTOM_ALL_REDUCE=false`
+- 这一路径把长文本 streaming 速度从约 `18.5 tok/s` 提升到约 `81.4-83.0 tok/s`。
+- 在这个 4 卡 PCIe 拓扑下，vLLM 会记录 custom all-reduce 不受支持并自动回退到 NCCL，因此真正起决定作用的是关闭 eager。
+- 更激进的 `speed` profile 也能工作，但本轮只有约 `78.3 tok/s`，因此当前不作为这个模型的默认快速设置。
+- `flashinfer_cutedsl + autotune` 在当前环境中出现了 worker 初始化不稳定，暂不作为默认推荐。
 
 ## 默认地址
 
@@ -379,6 +394,12 @@ cp .env.example .env
 - この設定では peak VRAM が約 `34.2GB` まで下がり、quality canary も `3/3` を維持できました。
 - `3G` まで下げると VRAM はさらに減りましたが、quality canary が `2/3` に落ちたため不採用です。
 - `2インスタンス x 2シーケンス` は成立しましたが、総 throughput 強化というより multi-tenant 隔離向きでした。
+- `huihui-ai/Huihui-Qwen3.5-397B-A17B-abliterated-NVFP4` を `4x RTX PRO 6000 Blackwell` で動かす場合、現時点の最速確認点は:
+  `MAX_MODEL_LEN=16384` + `KV_CACHE_MEMORY_BYTES=8G` + `TENSOR_PARALLEL_SIZE=4` + `ENFORCE_EAGER=false` + `DISABLE_CUSTOM_ALL_REDUCE=false`
+- この経路では長文 streaming の completion が約 `18.5 tok/s` から約 `81.4-83.0 tok/s` まで伸びました。
+- ただしこの 4GPU PCIe 構成では、vLLM ログ上で custom all-reduce 非対応となり自動で NCCL にフォールバックしているため、実際の主因は `ENFORCE_EAGER=false` 側です。
+- VRAM と電力をさらに厚く使う `speed` profile も成立しましたが、今回の sweep では約 `78.3 tok/s` に留まり、最速ではありませんでした。
+- `flashinfer_cutedsl + autotune` はこの環境では worker 初期化が不安定で、現時点では既定値にしません。
 
 ## 起動先
 
