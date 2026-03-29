@@ -6,6 +6,7 @@ This directory mixes day-to-day operator helpers with research and conversion ut
 
 - Use `probe_kv_budget.py` when you want to reproduce the main VRAM-saving finding.
 - Use `probe_dual_instance.py` when you want to test `1x2` versus `2x2`.
+- Use `probe_parallel_requests.py` when you want to measure `1 / 2 / 3` concurrent requests on one TP runtime.
 - Use `probe_mixed_models.py` when you want to evaluate colocating multiple models on one GPU.
 - Use `quantize_4b_nvfp4_docker.sh` when you want the most reproducible 4B conversion path.
 
@@ -20,6 +21,7 @@ This directory mixes day-to-day operator helpers with research and conversion ut
 
 - `probe_kv_budget.py`: sweep KV cache budgets and record quality / VRAM tradeoffs
 - `probe_dual_instance.py`: compare `1x2` and `2x2` multi-instance layouts
+- `probe_parallel_requests.py`: compare `1 / 2 / 3` concurrent requests on one TP runtime
 - `probe_mixed_models.py`: evaluate mixed-model colocated serving
 - `probe_model_matrix.py`: compare multiple candidate models under one runtime preset
 - `probe_4b_256k_context.py`: test 4B behavior at long context targets

@@ -36,6 +36,7 @@ Language: [English](#english) | [中文](#中文) | [日本語](#日本語)
 - On `4x RTX PRO 6000 Blackwell`, `huihui-ai/Huihui-Qwen3.5-397B-A17B-abliterated-NVFP4` at `16K / 8G / TP4` moved from about `18.5 tok/s` to about `83 tok/s` by switching to `ENFORCE_EAGER=false`; on this PCIe-only 4-GPU topology, vLLM still auto-falls back to NCCL for all-reduce.
 - A more aggressive `speed` profile with higher VRAM reservation reached about `78.3 tok/s`, so the current fast-path recommendation is still the lighter `16K / 8G` setup with non-eager execution.
 - `flashinfer_cutedsl + autotune` showed worker initialization instability in this environment, so it is not the current default recommendation.
+- On the same `16K / 8G / TP4` runtime, aggregate throughput improved from about `73.8 tok/s` at single-request load to about `112.9 tok/s` at `2` concurrent requests and about `115.3 tok/s` at `3` concurrent requests; the best `tok/s per watt` point was `2` concurrent requests.
 
 ---
 
@@ -91,6 +92,11 @@ Language: [English](#english) | [中文](#中文) | [日本語](#日本語)
 - On this PCIe-only 4-GPU setup, vLLM logged that custom all-reduce is not supported and fell back to NCCL automatically, so the dominant win came from disabling eager execution.
 - A higher-reservation `speed` profile still worked, but landed at about `78.3 tok/s`, so it is not the current fast default for this model.
 - `flashinfer_cutedsl + autotune` was not stable enough to adopt yet in this environment.
+- A follow-up non-stream parallel-request probe on the same runtime showed:
+  `1 concurrent = 73.8 tok/s`,
+  `2 concurrent = 112.9 tok/s`,
+  `3 concurrent = 115.3 tok/s`
+- The highest raw aggregate throughput was `3 concurrent`, but the best efficiency point was `2 concurrent`, because it used less average total GPU power while delivering most of the gain.
 
 ## Verified Local URLs
 
@@ -252,6 +258,11 @@ The current verified model may emit reasoning-style text such as `Thinking Proce
 - 在这个 4 卡 PCIe 拓扑下，vLLM 会记录 custom all-reduce 不受支持并自动回退到 NCCL，因此真正起决定作用的是关闭 eager。
 - 更激进的 `speed` profile 也能工作，但本轮只有约 `78.3 tok/s`，因此当前不作为这个模型的默认快速设置。
 - `flashinfer_cutedsl + autotune` 在当前环境中出现了 worker 初始化不稳定，暂不作为默认推荐。
+- 在同一套 `16K / 8G / TP4` runtime 上，后续并行请求测试显示：
+  `1 并发 = 73.8 tok/s`，
+  `2 并发 = 112.9 tok/s`，
+  `3 并发 = 115.3 tok/s`
+- 其中 `3 并发` 的 aggregate throughput 最高，但若把吞吐和平均总功耗一起看，`2 并发` 是更均衡的效率点。
 
 ## 默认地址
 
@@ -400,6 +411,12 @@ cp .env.example .env
 - ただしこの 4GPU PCIe 構成では、vLLM ログ上で custom all-reduce 非対応となり自動で NCCL にフォールバックしているため、実際の主因は `ENFORCE_EAGER=false` 側です。
 - VRAM と電力をさらに厚く使う `speed` profile も成立しましたが、今回の sweep では約 `78.3 tok/s` に留まり、最速ではありませんでした。
 - `flashinfer_cutedsl + autotune` はこの環境では worker 初期化が不安定で、現時点では既定値にしません。
+- 同じ `16K / 8G / TP4` runtime で非 streaming の並列リクエスト probe を回したところ、
+  `1 並列 = 73.8 tok/s`、
+  `2 並列 = 112.9 tok/s`、
+  `3 並列 = 115.3 tok/s`
+  でした。
+- 生の aggregate throughput だけなら `3 並列` が最高ですが、平均総消費電力まで含めた効率は `2 並列` が最良でした。
 
 ## 起動先
 

@@ -22,6 +22,34 @@
 - `flashinfer_cutedsl + autotune` は worker 初期化が不安定で、現時点では既定値にしない。
 - したがって、397B / A17B の現時点のローカル既定値は「`16K / 8G / TP4` を維持しつつ、non-eager + custom all-reduce 有効」を採る。
 
+## 397B / A17B の 2並列 / 3並列メモ
+
+- 同じ `16K / 8G / TP4 / non-eager` runtime で、non-stream の長文生成を `1 / 2 / 3` 並列で比較した。
+- 参照レポート:
+  - `docs/reports/parallel-request-probe-20260329-091505.md`
+  - ローカル生データ: `data/exports/parallel-request-probe-20260329-091505.json`
+- 実測:
+  - `1 並列`
+    - aggregate throughput `73.8037 tok/s`
+    - average total GPU power `1029.35 W`
+    - `tok/s per watt = 0.0717`
+  - `2 並列`
+    - aggregate throughput `112.9441 tok/s`
+    - average total GPU power `903.25 W`
+    - `tok/s per watt = 0.1250`
+  - `3 並列`
+    - aggregate throughput `115.3108 tok/s`
+    - average total GPU power `992.95 W`
+    - `tok/s per watt = 0.1161`
+- 解釈:
+  - 生の aggregate throughput だけ見ると `3 並列` が最速
+  - ただし `2 -> 3` の伸びは小さく、平均消費電力は再び増える
+  - したがって「日常運用の効率点」は `2 並列`、「ベンチ上の最大 throughput」は `3 並列`
+  - この結果は、単発 1 本の最速値よりも、同時実行時の aggregate throughput を重視する運用で意味がある
+- 途中で見つかった副作用:
+  - 並列 benchmark を始めるまで、gateway の benchmark repository が shared SQLite connection を無保護に read/write しており、同時 insert / select で `500` を返すことがあった
+  - repository 全体へ lock を入れた後は、同じ 2 並列 / 3 並列 probe が全件 PASS した
+
 ## 目的
 
 - `-c 256K` を維持したまま VRAM 使用量をできるだけ削る
@@ -199,6 +227,7 @@
 - `scripts/probe_kv_budget.py` を追加した
 - `scripts/probe_dual_instance.py` を追加した
 - `scripts/probe_speed_paths.py` を追加した
+- `scripts/probe_parallel_requests.py` を追加した
 - この script は budget ごとに
   - vLLM 再構成
   - process cmdline 検証
@@ -211,12 +240,19 @@
   - sustained exact JSON workload
   - 平均電力 / peak 電力 / aggregate throughput の記録
   までを扱える
+- `probe_parallel_requests.py` は
+  - 単一 TP runtime 上で `1 / 2 / 3` 同時リクエスト
+  - aggregate throughput
+  - 平均 / peak 消費電力
+  - 元の runtime への自動復帰
+  までを扱える
 - 現時点の解釈は次の通り
   - `8G`: 安定
   - `6G`: 安定
   - `4G`: 安定かつ最良
   - `3G`: 速度は維持したが quality canary が崩れたため不採用
   - `397B / A17B`: `16K / 8G / TP4` でも non-eager 化で `80 tok/s` 級まで伸びた
+  - `397B / A17B` 並列運用: 最大 throughput は `3 並列`、効率最良点は `2 並列`
 
 ## 参照した benchmark record
 
